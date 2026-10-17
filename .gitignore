@@ -1,0 +1,17 @@
+dist/
+storage/
+release/
+node_modules/
+*.log
+.env
+.env.*
+**/.env
+**/.env.*
+coverage/
+*.tsbuildinfo
+*.pem
+*.key
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
