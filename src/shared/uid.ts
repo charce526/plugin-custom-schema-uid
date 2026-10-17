@@ -14,7 +14,7 @@ export function normalizeUid(value: unknown, optional = false): string {
   return result;
 }
 
-const referenceKeys = new Set(['uid', 'x-uid', 'schemaUid', 'pageSchemaUid', 'tabSchemaUid', 'menuSchemaUid',
+const referenceKeys = new Set(['uid', 'x-uid', 'schemaUid', 'customSchemaUid', 'pageSchemaUid', 'tabSchemaUid', 'menuSchemaUid',
   'parentId', 'parentUid', 'pageUid', 'tabUid', 'targetUid', 'sourceUid', 'modelUid', 'gridUid', 'tabActiveKey']);
 const scriptKeys = /^(code|script|javascript|js|expression|html|content|sql)$/i;
 

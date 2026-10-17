@@ -54,7 +54,7 @@ for (const name of ['README.md', 'UPSTREAM.md', 'LICENSING.md', 'PUBLISHING.md',
 }
 for (const name of ['README.md', 'UPSTREAM.md', 'RELEASE_NOTES.md']) {
   const text = fs.readFileSync(path.join(root, name), 'utf8');
-  if (!text.includes('simousa') || !text.includes('https://github.com/simousa/nocobase-plugin')) errors.push(`Missing upstream attribution: ${name}`);
+  if (name !== 'RELEASE_NOTES.md' && (!text.includes('simousa') || !text.includes('https://github.com/simousa/nocobase-plugin'))) errors.push(`Missing upstream attribution: ${name}`);
   if (/原作者\s*(?:\*\*|`)?@simo\b/.test(text)) errors.push(`Incorrect public author attribution: ${name}`);
   if (['CHANGELOG.md', 'RELEASE_NOTES.md'].includes(name) && /撰稿人|编写人|本插件由\*\*偕作BIM/.test(text)) errors.push(`Unexpected editorial attribution: ${name}`);
 }

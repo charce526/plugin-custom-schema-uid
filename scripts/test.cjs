@@ -102,14 +102,16 @@ async function main() {
   pass('existing V1 schema tree, stable property names, blocks, schema permissions and server hooks');
   const pagePreview = await service.preview(v2.id, 'new-modern-page', 1); await service.execute(pagePreview.id, 1, true);
   assert.equal((await M('desktopRoutes').findByPk(tab.id)).schemaUid, 'renamed-tab');
-  assert.deepEqual(await service.resolve(['modern-page', 'modern-tab']), { 'modern-page': 'new-modern-page', 'modern-tab': 'renamed-tab' });
-  await assert.rejects(() => service.available('modern-page'), /old address/);
+  assert.deepEqual(await service.resolve(['modern-page', 'modern-tab']), {});
+  assert.equal((await service.status(pagePreview.id, 1)).result.oldAddress, 'invalid');
+  assert.equal(await M('desktopRoutes').count({ where: { schemaUid: 'modern-page' } }), 0);
+  await assert.rejects(() => service.available('modern-page'), /retired identifier/);
   await assert.rejects(() => service.guardStale({ values: { parentId: 'modern-tab' } }), /another session/);
-  pass('independent page rename, page/tab aliases and retired-UID write guard');
+  pass('old page/tab URLs have no redirect mapping; retired-UID stale-write protection remains');
   await M('flowModels').update({ options: { use: 'BlockGridModel', parentId: 'renamed-tab', props: { addedAfterRename: true } } }, { where: { uid: 'existing-grid' } });
   const back = await service.preview(tab.id, 'modern-tab', 1); await service.execute(back.id, 1, true);
   assert.equal((await M('flowModels').findByPk('existing-grid')).get('options').props.addedAfterRename, true);
-  assert.deepEqual(await service.resolve(['renamed-tab']), { 'renamed-tab': 'modern-tab' });
+  assert.deepEqual(await service.resolve(['renamed-tab']), {});
   pass('rename back retains configurations added after the first rename');
   const stale = await service.preview(tab.id, 'stale-target', 1);
   await M('desktopRoutes').update({ title: 'Changed by another session' }, { where: { id: tab.id } });
@@ -177,6 +179,18 @@ async function main() {
   assert.equal(String(listing.find((row) => String(row.id) === String(child.id)).parentId), String(nested.id));
   assert.equal(listing.find((row) => String(row.id) === String(groupFirst.id)).version, undefined);
   pass('management rows include sorted groups and nested parents as plain records');
+  await M('xzUidAliases').create({ uid: 'legacy-old-address', routeId: String(child.id) });
+  assert.deepEqual(await service.resolve(['legacy-old-address', 'nested-page']), {});
+  // v1.1.0 completed operations may still store redirect metadata. Never advertise it after upgrading.
+  const historical = await M('xzUidOperations').findByPk(pagePreview.id);
+  await historical.update({ result: { ...historical.get('result'), oldAddress: 'redirect' } });
+  assert.equal((await service.status(pagePreview.id, 1)).result.oldAddress, 'invalid');
+  assert.equal((await service.execute(pagePreview.id, 1, true)).oldAddress, 'invalid');
+  const noWritePreview = await service.preview(child.id, 'cancelled-nested-page', 1);
+  assert(noWritePreview.id);
+  const unchanged = await M('desktopRoutes').findByPk(child.id);
+  assert.equal(unchanged.schemaUid, 'nested-page'); assert.equal(unchanged.title, 'Nested page');
+  pass('upgrade ignores historical redirect metadata; preview leaves UID and title unchanged until execution');
   console.log(`PASS: ${checks} scenario groups on real NocoBase + ${db.sequelize.getDialect()}`);
 }
 async function cleanup() {

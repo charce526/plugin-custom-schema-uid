@@ -1,5 +1,6 @@
 import { normalizeUid, RESOURCE, rewriteReferences } from '../shared/uid';
 import { CreationUidInput } from './creationDialog';
+import { pageUidEditorField } from './PageUidEditorEntry';
 
 const installed = new WeakSet<object>();
 
@@ -49,6 +50,21 @@ export function installMenuUidSupport(Base: any, t: (key: string) => string, add
     const flow = Base.globalFlowRegistry.getFlow(key);
     if (!flow) continue;
     const steps = { ...flow.steps };
+    if (key === 'menuSettings' && steps.edit) {
+      const edit = steps.edit;
+      const existingPage = (ctx: any) => ['page', 'flowPage'].includes(ctx.model.getRoute()?.type) && !ctx.model.getCreationMeta()?.menuType;
+      steps.edit = { ...edit, defaultParams: async (ctx: any) => {
+        const defaults = typeof edit.defaultParams === 'function' ? await edit.defaultParams(ctx) : edit.defaultParams;
+        return { ...(defaults || {}), ...(existingPage(ctx) ? { customSchemaUid: ctx.model.getRoute().schemaUid } : {}) };
+      }, uiSchema: async (ctx: any) => {
+        const source = typeof edit.uiSchema === 'function' ? await edit.uiSchema(ctx) : edit.uiSchema;
+        const schema = { ...(source || {}) };
+        if (existingPage(ctx)) {
+          schema.customSchemaUid = pageUidEditorField(ctx, t, addressPrefix);
+        }
+        return schema;
+      } };
+    }
     for (const stepKey of key === 'menuCreation' ? ['basic'] : ['insertBefore', 'insertAfter', 'insertInner']) {
       const step = steps[stepKey];
       if (!step) continue;

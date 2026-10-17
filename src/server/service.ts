@@ -49,7 +49,7 @@ export class UidService {
     const route = await this.model('desktopRoutes').findOne({ where: { schemaUid: value }, transaction });
     if (route && String(route.get('id')) !== String(ownRouteId)) throw new UidError(409, 'UID is already in use.');
     const alias = await this.model('xzUidAliases').findByPk(value, { transaction });
-    if (alias && String(alias.get('routeId')) !== String(ownRouteId)) throw new UidError(409, 'UID is reserved by an old address.');
+    if (alias && String(alias.get('routeId')) !== String(ownRouteId)) throw new UidError(409, 'UID is reserved by a retired identifier.');
     for (const [name, key] of [['uiSchemas', 'x-uid'], ['flowModels', 'uid']]) {
       if (await this.model(name)?.findByPk(value, { transaction })) throw new UidError(409, 'UID conflicts with an existing schema or model.');
       // Menu schema identifiers also share the V1 schema namespace.
@@ -125,7 +125,7 @@ export class UidService {
         routeId: String(routeId), from: plan.route.schemaUid, to: nextUid, digest: digest(snapshot), expiresAt: Date.now() + 10 * 60_000,
       } }, { transaction });
       return { id, from: plan.route.schemaUid, to: nextUid, route: plan.route, oldPath: plan.oldPath, newPath: plan.newPath,
-        counts: plan.counts, warnings: plan.warnings, oldAddress: 'redirect', expiresAt: Date.now() + 10 * 60_000 };
+        counts: plan.counts, warnings: plan.warnings, oldAddress: 'invalid', expiresAt: Date.now() + 10 * 60_000 };
     });
   }
   /** Low-level writes preserve record identities and avoid create/destroy hooks and default role assignment. */
@@ -142,7 +142,7 @@ export class UidService {
     const result = await this.locked(async (transaction) => {
       const op = await this.model('xzUidOperations').findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
       if (!op || String(op.get('userId')) !== String(userId)) throw new UidError(404, 'Operation not found.');
-      if (op.get('status') === 'completed') return op.get('result');
+      if (op.get('status') === 'completed') return { ...op.get('result'), oldAddress: 'invalid' };
       const payload = op.get('payload');
       if (payload.expiresAt < Date.now()) throw new UidError(409, 'Preview expired. Check the impact again.');
       const snapshot = await this.snapshot(transaction, true);
@@ -155,9 +155,10 @@ export class UidService {
       for (const root of roots) await this.write(root.table, root.row, root.values, transaction);
       for (const change of plan.changes) if (!roots.includes(change)) await this.write(change.table, change.row, change.values, transaction);
       await this.model('xzUidAliases').destroy({ where: { uid: payload.to }, transaction });
+      // Retired identifiers are kept only to reject stale writes, never to redirect old URLs.
       await this.model('xzUidAliases').upsert({ uid: payload.from, routeId: payload.routeId }, { transaction });
       const result = { id, status: 'completed', routeId: payload.routeId, from: payload.from, to: payload.to,
-        oldPath: plan.oldPath, newPath: plan.newPath, oldAddress: 'redirect', warnings: plan.warnings, counts: plan.counts };
+        oldPath: plan.oldPath, newPath: plan.newPath, oldAddress: 'invalid', warnings: plan.warnings, counts: plan.counts };
       await op.update({ status: 'completed', result }, { transaction });
       return result;
     });
@@ -176,19 +177,15 @@ export class UidService {
     return this.locked(async (transaction) => {
       const op = await this.model('xzUidOperations').findByPk(id, { transaction });
       if (!op || String(op.get('userId')) !== String(userId)) throw new UidError(404, 'Operation not found.');
-      return { id, status: op.get('status'), result: op.get('result') };
+      const saved = op.get('result');
+      return { id, status: op.get('status'), result: saved ? { ...saved, oldAddress: 'invalid' } : saved };
     });
   }
   async resolve(ids: string[]) {
     if (!Array.isArray(ids) || ids.length > 32 || ids.some((id) => typeof id !== 'string' || id.length > 255)) throw new UidError(400, 'Invalid identifiers.');
-    const result: Record<string, string> = {};
-    for (const id of ids) {
-      const alias = await this.model('xzUidAliases').findByPk(id);
-      if (!alias) continue;
-      const route = await this.model('desktopRoutes').findByPk(alias.get('routeId'));
-      if (route) result[id] = route.get('schemaUid');
-    }
-    return result;
+    // Compatibility endpoint for older clients: never return a redirect mapping,
+    // including identifiers recorded by previous plugin versions.
+    return {};
   }
   async guardStale(params: any) {
     const aliases = await this.rows('xzUidAliases');

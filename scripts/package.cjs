@@ -10,7 +10,19 @@ async function main() {
   fs.writeFileSync(ignore, fs.readFileSync(ignore, 'utf8').replace(/\r/g, ''));
   await require('@nocobase/build/lib/tarPlugin').tarPlugin(root, () => {});
   const archive = path.resolve('storage/tar', pkg.name + '-' + pkg.version + '.tgz'), entries = [];
-  await tar.t({ file: archive, onentry: (entry) => entries.push(entry.path) });
+  let packedMetadata;
+  await tar.t({ file: archive, onentry: (entry) => {
+    entries.push(entry.path);
+    if (entry.path === 'package.json') {
+      let content = '';
+      entry.on('data', (chunk) => { content += chunk; });
+      entry.on('end', () => { packedMetadata = JSON.parse(content); });
+    }
+  } });
+  assert.equal(packedMetadata?.name, pkg.name, 'Packed name does not match source');
+  assert.equal(packedMetadata?.version, pkg.version, 'Packed version does not match source');
+  assert.equal(packedMetadata?.['description.zh-CN'], pkg['description.zh-CN'], 'Packed description does not match source');
+  assert.equal(packedMetadata?.['x-upstream']?.repository, 'https://github.com/simousa/nocobase-plugin');
   for (const file of ['package.json', 'client.js', 'client-v2.js', 'server.js', 'dist/client/index.js', 'dist/client-v2/index.js',
     'dist/server/index.js', 'dist/server/index.d.ts', 'dist/server/service.js', 'dist/shared/uid.js',
     'dist/server/collections/xzUidAliases.js', 'dist/locale/zh-CN.json', 'UPSTREAM.md', 'LICENSE', 'LICENSING.md', 'VERIFICATION.md']) {

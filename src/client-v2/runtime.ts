@@ -1,37 +1,10 @@
-import { RESOURCE, rewriteReferences } from '../shared/uid';
+import { rewriteReferences } from '../shared/uid';
 
-/** Resolve only the page and tab segments. Prefix, query, fragment, and popup suffix are preserved. */
-export async function resolveCurrentAddress(api: any) {
-  const match = location.pathname.match(/^(.*\/(?:v\/)?admin\/)([^/]+)(?:\/tabs\/([^/]+))?(.*)$/);
-  if (!match || ['settings', 'login'].includes(match[2])) return;
-  const { data } = await api.request({ url: `${RESOURCE}:resolve`, method: 'post', data: { uids: [match[2], match[3]].filter(Boolean) } });
-  const mapping = data.data || {};
-  const path = match[1] + (mapping[match[2]] || match[2]) + (match[3] ? '/tabs/' + (mapping[match[3]] || match[3]) : '') + match[4];
-  if (path !== location.pathname) location.replace(path + location.search + location.hash);
-}
-
-export function installRuntime(api: any, onChanged: () => void) {
-  let running = false;
-  const resolve = async () => {
-    if (running) return;
-    running = true;
-    try { await resolveCurrentAddress(api); } catch { /* Auth may not yet be ready; retry after accessible routes load. */ }
-    finally { running = false; }
-  };
-  api.axios.interceptors.response.use((response: any) => {
-    if (/desktopRoutes:(listAccessible|getAccessible)/.test(response.config?.url || '')) void resolve();
-    return response;
-  });
-  window.addEventListener('popstate', () => void resolve());
-  window.addEventListener('hashchange', () => void resolve());
-  // SPA navigation need not fetch the routes again.
-  for (const key of ['pushState', 'replaceState'] as const) {
-    const original = history[key].bind(history);
-    history[key] = (...args: Parameters<History[typeof key]>) => { original(...args); void resolve(); };
-  }
+/** Notify other editing sessions; historical URLs are never resolved or redirected. */
+export function installRuntime(_api: any, onChanged: () => void) {
   if (typeof BroadcastChannel !== 'undefined') {
     const channel = new BroadcastChannel('xz-schema-uid');
-    channel.onmessage = () => { onChanged(); void resolve(); };
+    channel.onmessage = () => onChanged();
   }
 }
 

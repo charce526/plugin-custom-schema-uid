@@ -1,6 +1,6 @@
 # GitHub 提交与发布准备
 
-当前版本：`1.1.0`。技术检查与许可核查分别记录；当前公开发布的待办是 [LICENSING.md](LICENSING.md) 中的上游许可依据。
+当前版本：`1.2.0`。技术检查与许可核查分别记录；当前公开发布的待办是 [LICENSING.md](LICENSING.md) 中的上游许可依据。
 
 ## 提交范围
 
@@ -25,7 +25,7 @@ git diff --cached --check
 git diff --cached --stat
 ```
 
-初次提交说明建议：`feat: add V1/V2 page and tab UID management based on simousa plugin`。
+本次基于已发布 1.1.0 提交历史准备增量提交；提交说明建议：`feat: release page UID editing improvements in v1.2.0`。
 
 本改进版仓库为 [charce526/plugin-custom-schema-uid](https://github.com/charce526/plugin-custom-schema-uid)，包元数据中的 repository、homepage 和 bugs 指向本项目；原作者信息单独保存在 `x-upstream` 中。源码导出脚本只生成本地材料，不执行远程提交或发行版发布。
 
@@ -37,12 +37,12 @@ git diff --cached --stat
 node packages/plugins/@xiezuo/plugin-custom-schema-uid/scripts/package.cjs
 ```
 
-源码压缩包用于 GitHub 源码审查，不能作为 NocoBase 安装包导入。安装包为 `release/plugin-custom-schema-uid-1.1.0.tgz`，应包含编译后的 client、client-v2、server 及类型声明；其 `.sha256` 用于校验。安装包不提交到源码分支，可在许可依据明确后作为 GitHub Release 附件。
+源码压缩包用于 GitHub 源码审查，不能作为 NocoBase 安装包导入。安装包为 `release/plugin-custom-schema-uid-1.2.0.tgz`，应包含编译后的 client、client-v2、server 及类型声明；其 `.sha256` 用于校验。安装包不提交到源码分支，可在许可依据明确后作为 GitHub Release 附件。
 
 ## 公开发布前的最后检查
 
 1. 补齐许可依据和许可文件，使用 `node scripts/preflight.cjs --strict-public` 检查；依据未明确时该命令会返回非零退出码。
 2. 实际仓库链接、作者信息、上游固定提交和版本号准确，保留原作者 `simousa` 及上游链接。
 3. `git diff --cached --check` 通过，暂存区只包含本插件源码和文档。
-4. 发布说明采用 [RELEASE_NOTES.md](RELEASE_NOTES.md)，版本号采用 1.1.0，保留 2.2.0 浏览器验收及其他数据库的验证边界。
+4. 发布说明采用 [RELEASE_NOTES.md](RELEASE_NOTES.md)，版本号采用 1.2.0，发行附件仅包含编译安装包和校验文件，保留 2.2.0 浏览器验收及其他数据库的验证边界。
 5. 重新导出最终源码，核对安装包清单和哈希后再发布。

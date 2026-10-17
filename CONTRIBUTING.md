@@ -21,6 +21,10 @@ node packages/plugins/@xiezuo/plugin-custom-schema-uid/scripts/test.cjs
 
 `UID_RUNTIME_ROOT` 可指定另一套 NocoBase 依赖目录以验证最低版本。脚本不是 SQLite／PostgreSQL 兼容性证明。
 
+## 开发服务与界面核对
+
+使用 `app-dev` 时，页面可能从单独的插件开发端口加载源码。正式 `build` 更新 `dist/`，不代表正在运行的开发服务已加载新代码。界面与源码不一致时，先核对浏览器实际资源地址和内容，再重启对应的插件前端服务；不要只凭编译成功判断界面已生效。
+
 ## 改动约定
 
 - 保留 [UPSTREAM.md](UPSTREAM.md)、原作者署名及继承的版权声明。

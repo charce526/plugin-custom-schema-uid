@@ -1,20 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Checkbox, Descriptions, Form, Input, Modal, Select, Space, Switch, Table, Tag, Typography } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Alert, Button, Card, Descriptions, Form, Input, Modal, Select, Space, Switch, Table, Tag, Typography } from 'antd';
 import { normalizeUid, RESOURCE } from '../shared/uid';
 import { buildRouteTree } from './routeTree';
-import ImpactSummary from './ImpactSummary';
+import { ManualChecks, notifyUidChange, requestUidChange } from './uidChange';
 
 const errorText = (error: any) => error.response?.data?.errors?.[0]?.message || error.message || String(error);
 const warning = 'Changing a UID changes its address and may affect links, embeds, bookmarks, scripts and external systems. Review the impact every time.';
 const typeNames = { page: 'V1 page', flowPage: 'V2 page', tabs: 'Tab', group: 'Group', link: 'Link' };
-
-function ManualChecks({ warnings, t }: { warnings: string[]; t: (key: string) => string }) {
-  if (!warnings?.length) return null;
-  return <div><Typography.Text type="warning">{t('Custom references require manual review.')}</Typography.Text>
-    <details><summary>{t('Show reference locations')}</summary><ul>
-      {warnings.map((location) => <li key={location}><Typography.Text code>{location}</Typography.Text></li>)}
-    </ul></details></div>;
-}
 
 export default function UidManager({ api, t, modern = true }: { api: any; t: (key: string) => string; modern?: boolean }) {
   const [rows, setRows] = useState<any[]>([]), [parents, setParents] = useState<any[]>([]);
@@ -23,9 +15,9 @@ export default function UidManager({ api, t, modern = true }: { api: any; t: (ke
   const [showHidden, setShowHidden] = useState(false);
   const [expanded, setExpanded] = useState<React.Key[]>([]);
   const [editing, setEditing] = useState<any>(), [newUid, setNewUid] = useState('');
-  const [preview, setPreview] = useState<any>(), [accepted, setAccepted] = useState(false);
-  const [busy, setBusy] = useState(false), busyRef = useRef(false);
-  const [uncertain, setUncertain] = useState(false), [result, setResult] = useState<any>();
+  const [busy, setBusy] = useState(false);
+  const [confirmation, setConfirmation] = useState<any>();
+  const [result, setResult] = useState<any>();
   const [creating, setCreating] = useState(false), [form] = Form.useForm();
   const type = Form.useWatch('type', form) || 'flowPage';
   const creationUid = Form.useWatch('uid', form);
@@ -41,40 +33,33 @@ export default function UidManager({ api, t, modern = true }: { api: any; t: (ke
     finally { setLoading(false); }
   };
   useEffect(() => { void refresh(); }, []);
-  const notify = () => {
-    if (typeof BroadcastChannel !== 'undefined') {
-      const channel = new BroadcastChannel('xz-schema-uid'); channel.postMessage('changed'); channel.close();
-    }
-  };
-  const finish = async (data: any) => {
-    setResult(data); setUncertain(false); setEditing(undefined); setPreview(undefined); notify(); await refresh();
-  };
-  const checkStatus = async () => {
-    setBusy(true);
+  const notify = notifyUidChange;
+  const finish = async (data: any) => { setResult(data); setConfirmation(undefined); setEditing(undefined); await refresh(); };
+  const saveChange = async () => {
+    setBusy(true); setError('');
     try {
-      const status = await request('status', undefined, { id: preview.id });
-      if (status.status === 'completed') await finish(status.result);
-      else { setUncertain(false); setError(t('No committed change was found. Recheck the impact before retrying.')); setPreview(undefined); }
+      const result = await requestUidChange({ api, routeId: editing.id, uid: newUid, t, modern,
+        showConfirmation: (options) => {
+          setConfirmation(options); setBusy(false);
+          return { update: (patch) => setConfirmation((current: any) => ({ ...current, ...patch })) };
+        } });
+      if (result) await finish(result);
     } catch (error) { setError(errorText(error)); }
     finally { setBusy(false); }
   };
-  const execute = async () => {
-    if (busyRef.current) return;
-    busyRef.current = true; setBusy(true); setError('');
-    try { await finish(await request('execute', { id: preview.id, confirmed: true })); }
-    catch (error: any) {
-      if (!error.response || error.response.status >= 500) {
-        setUncertain(true); setError(t('The execution result is not yet known. Query its status before retrying.'));
-      } else { setError(errorText(error)); setPreview(undefined); setAccepted(false); }
-    } finally { busyRef.current = false; setBusy(false); }
-  };
-  const confirm = () => Modal.confirm({ title: t('Confirm UID change'),
-    content: <Space direction="vertical"><Typography.Text>{editing.title}</Typography.Text>
-      <Typography.Text code>{preview.from} → {preview.to}</Typography.Text>
-      <Alert type="warning" showIcon message={t('Old addresses will redirect to the new address while this plugin is enabled. Check custom scripts and external references manually.')} />
-    </Space>, okText: t('Confirm UID change'), cancelText: t('Cancel'), onOk: execute });
   const dataSource = buildRouteTree(rows, search, version, showHidden);
-  const edit = (row: any) => { setEditing(row); setNewUid(row.schemaUid); setPreview(undefined); setAccepted(false); setError(''); setUncertain(false); };
+  const edit = (row: any) => { setConfirmation(undefined); setEditing(row); setNewUid(row.schemaUid); setError(''); };
+  const cancelBlocked = busy || confirmation?.cancelButtonProps?.disabled;
+  const cancelEdit = () => {
+    if (cancelBlocked) return;
+    if (confirmation) { setConfirmation(undefined); confirmation.onCancel(); }
+    else setEditing(undefined);
+  };
+  const confirmChange = async () => {
+    setBusy(true);
+    try { await confirmation.onOk(); } catch { /* Errors remain in the confirmation content. */ }
+    finally { setBusy(false); }
+  };
   const pathOf = (row: any) => modern ? row.path : row.legacyPath;
   return <Card title={t('Custom Page UID')} extra={<Button onClick={() => { form.resetFields(); setCreating(true); }}>{t('Create page or tab')}</Button>}>
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -83,7 +68,7 @@ export default function UidManager({ api, t, modern = true }: { api: any; t: (ke
       {result && <Alert type="success" showIcon closable onClose={() => setResult(undefined)} message={t('UID changed successfully')}
         description={<Space direction="vertical"><Typography.Text code>{result.from} → {result.to}</Typography.Text>
           <a href={modern ? result.newPath : result.newPath.replace('/v/admin/', '/admin/')} target="_blank" rel="noreferrer">{t('Open new address')}</a>
-          <Typography.Text>{t('Old addresses will redirect to the new address while this plugin is enabled. Check custom scripts and external references manually.')}</Typography.Text>
+          <Typography.Text>{t('The plugin updates related configuration while preserving page content and business data. Old addresses will stop working; review scripts and external links.')}</Typography.Text>
           <ManualChecks warnings={result.warnings} t={t} />
         </Space>} />}
       <Space wrap><Input.Search placeholder={t('Search title or UID')} value={search} onChange={(e) => setSearch(e.target.value)} allowClear style={{ width: 320 }} />
@@ -102,9 +87,13 @@ export default function UidManager({ api, t, modern = true }: { api: any; t: (ke
         { title: t('Actions'), render: (_, row) => ['page', 'flowPage', 'tabs'].includes(row.type) ? <Button onClick={() => edit(row)}>{t('Change UID')}</Button> : <Typography.Text type="secondary">{t('Read only')}</Typography.Text> },
       ]} />
     </Space>
-    <Modal open={!!editing} title={t('Change UID')} width={760} maskClosable={false} closable={!busy && !uncertain}
-      onCancel={() => { if (!busy && !uncertain) setEditing(undefined); }} footer={null}>
-      {editing && <Space direction="vertical" style={{ width: '100%' }} size="middle">
+    <Modal open={!!editing} zIndex={2000} title={confirmation ? confirmation.title : t('Change UID')} width={760} maskClosable={false} closable={!cancelBlocked} keyboard={!cancelBlocked}
+      onCancel={cancelEdit} footer={null}>
+      {confirmation ? <Space direction="vertical" style={{ width: '100%' }}>
+        {confirmation.content}
+        <Space><Button disabled={cancelBlocked} onClick={cancelEdit}>{t('Cancel')}</Button>
+          <Button type="primary" loading={busy} onClick={confirmChange}>{confirmation.okText}</Button></Space>
+      </Space> : editing && <Space direction="vertical" style={{ width: '100%' }} size="middle">
         <Alert type="warning" showIcon message={t(warning)} />
         {error && <Alert type="error" showIcon message={t(error)} />}
         <Descriptions size="small" column={1} bordered items={[
@@ -115,25 +104,9 @@ export default function UidManager({ api, t, modern = true }: { api: any; t: (ke
           { key: 'path', label: t('Current address'), children: pathOf(editing) },
         ]} />
         <Form layout="vertical"><Form.Item label={t('New UID')} extra={t('Letters, digits, underscores and hyphens; cannot start with a hyphen; maximum 64 characters.')}>
-          <Input value={newUid} maxLength={64} disabled={busy || uncertain} onChange={(e) => { setNewUid(e.target.value); setPreview(undefined); setAccepted(false); }} />
+          <Input value={newUid} maxLength={64} disabled={busy} onChange={(e) => setNewUid(e.target.value)} />
         </Form.Item></Form>
-        {!preview && <Button type="primary" loading={busy} disabled={newUid.trim() === editing.schemaUid} onClick={async () => {
-          setBusy(true); setError('');
-          try { setPreview(await request('preview', { routeId: editing.id, uid: normalizeUid(newUid) })); setAccepted(false); }
-          catch (error) { setError(errorText(error)); } finally { setBusy(false); }
-        }}>{t('Check impact and continue')}</Button>}
-        {preview && <>
-          <Alert type="warning" showIcon message={t('Review the old and new identifiers and all affected references. This preview has not changed the page.')}
-            description={<Space direction="vertical"><Typography.Text code>{preview.from} → {preview.to}</Typography.Text>
-              <Typography.Text>{t('New address')}{t(': ')}{modern ? preview.newPath : preview.newPath.replace('/v/admin/', '/admin/')}</Typography.Text>
-              <ImpactSummary counts={preview.counts} t={t} />
-              <Typography.Text>{t('Old addresses will redirect to the new address while this plugin is enabled. Check custom scripts and external references manually.')}</Typography.Text>
-              <ManualChecks warnings={preview.warnings} t={t} />
-            </Space>} />
-          <Checkbox checked={accepted} disabled={busy || uncertain} onChange={(e) => setAccepted(e.target.checked)}>{t('I understand the impact and have checked the target and new UID.')}</Checkbox>
-          {uncertain ? <Button loading={busy} onClick={checkStatus}>{t('Query execution status')}</Button> :
-            <Button danger type="primary" disabled={!accepted} loading={busy} onClick={confirm}>{t('Continue to final confirmation')}</Button>}
-        </>}
+        <Button type="primary" loading={busy} disabled={newUid.trim() === editing.schemaUid} onClick={saveChange}>{t('Save')}</Button>
       </Space>}
     </Modal>
     <Modal open={creating} title={t('Create page or tab')} onCancel={() => !busy && setCreating(false)} confirmLoading={busy} maskClosable={false}
