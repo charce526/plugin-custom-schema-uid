@@ -4,7 +4,7 @@
   "displayName": "Custom Page UID",
   "displayName.zh-CN": "页面UID自定义",
   "description": "Based on simousa's plugin-custom-schema-uid. For NocoBase 2.2.0 and later 2.x releases: custom UIDs on creation, existing UID renaming, route hierarchy management, impact previews and old-address compatibility for V1/V2 pages and tabs. Original author: simousa. Original repository: https://github.com/simousa/nocobase-plugin",
-  "description.zh-CN": "基于原作者 simousa 的 plugin-custom-schema-uid 插件改进。适用于 NocoBase 2.2.0 及以上 2.x 版本，支持 V1/V2 页面与页签的新建自定义 UID、已有 UID 修改、路由层级统一管理、修改前影响检查和旧地址兼容。原项目：https://github.com/simousa/nocobase-plugin",
+  "description.zh-CN": "适用于 NocoBase 2.2.0 及以上 2.x 版本，支持 V1/V2 页面与页签的新建自定义 UID、已有 UID 修改、路由层级统一管理、修改前影响检查和旧地址兼容。",
   "author": "偕作BIM",
   "license": "SEE LICENSE IN LICENSE",
   "homepage": "https://github.com/charce526/plugin-custom-schema-uid#readme",
